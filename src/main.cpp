@@ -133,6 +133,33 @@ class SQLiteInterface {
 
 };
 
+class SavedURLBookmark {
+
+    private:
+
+        int id;
+        std::string label;
+        std::string url;
+        std::string date;
+        std::string row_display_content;
+
+    public:
+
+        SavedURLBookmark(int _id, const char* _label, const char* _url, const char* _date) {
+
+            std::string intervalue_buffer(7, ' ');
+
+            id = _id;
+            label = _label;
+            url = _url;
+            date = _date;
+
+            row_display_content = label + intervalue_buffer + url + intervalue_buffer + date;
+
+        }
+
+};
+
 struct WindowDimensions {
     
     int width;
@@ -344,13 +371,11 @@ void iterTextFile(const char* Path) {
 void PrintMousePos() {
 
     ImVec2 pos = ImGui::GetMousePos();
-    std::cout << pos.x << "," << pos.y << std::endl;
+    std::cout << "Clicked Position At: [" << pos.x << "," << pos.y << "]" << std::endl;
 
 }
 
 void ImGuiLayout_TextHeadersChild() {
-
-    int ChildWidth, ChildHeight;
 
     ImGui::SetCursorPos(ImVec2(12,10));
 	ImGui::BeginChild(8, ImVec2(543,28), true);
@@ -413,7 +438,7 @@ void ImGuiLayout_URLListBoxChild() {
     
 	static int current_item = 0;
     if (ImGui::BeginListBox("##", ImVec2(542, 130))) {
-        for (int i = 0; i < strings.size(); ++i) {
+        for (size_t i = 0; i < strings.size(); ++i) {
             if (ImGui::Selectable(strings[i].c_str(), SelectedEqualToCurrent(i, current_item), ImGuiSelectableFlags_AllowDoubleClick)) {
                 current_item = i;
             }
@@ -472,7 +497,11 @@ int main(int argc, char** argv) {
         
         ImGuiIntrfc.ImGuiRenderWithGLFWProcess();
         
-        PrintMousePos();
+
+
+        if (ImGui::IsMouseClicked(0)) {
+            PrintMousePos();
+        }
 
     }
 
