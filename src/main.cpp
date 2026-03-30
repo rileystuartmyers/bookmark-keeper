@@ -52,14 +52,14 @@ struct precompiled_sqliteStatements {
         fetch_stmt(
             create_statement(
                 db,
-                "SELECT id, url, date FROM BOOKMARKS;"
+                "SELECT id, label, url, date FROM BOOKMARKS;"
             )
         ),
 
         insert_stmt(
             create_statement(
                 db,
-                "INSERT INTO BOOKMARKS(url, date) VALUES (?, ?);"
+                "INSERT INTO BOOKMARKS(label, url, date) VALUES (?, ?, ?);"
             )
         ),
         
@@ -85,7 +85,7 @@ struct precompiled_sqliteStatements {
         )
         
     {}
-        
+
     ~precompiled_sqliteStatements() = default;
     
 };
@@ -122,14 +122,32 @@ class SQLiteInterface {
 
     public:
     
+        bool is_valid_connection() {
+            return (db_connection != nullptr);
+        }
 
-        SQLiteInterface(const char* _directory) : directory(_directory) {
-
-            initialize_connection();
-            statements = std::make_unique<precompiled_sqliteStatements>(db_connection);
-            printf("return_code == %d\n", return_code);
+        statement& get_fetch_statement() {
+        
+            sqlite3_reset(statements -> fetch_stmt.get());
+            return statements -> fetch_stmt;
 
         };
+
+        statement& get_delete_statement() {
+            
+            sqlite3_reset(statements -> delete_stmt.get());
+            sqlite3_clear_bindings(statements -> delete_stmt.get());
+            return statements -> delete_stmt;
+            
+        }
+        
+        SQLiteInterface(const char* _directory) : directory(_directory) {
+    
+            initialize_connection();
+            statements = std::make_unique<precompiled_sqliteStatements>(db_connection);
+    
+        };
+
 
 };
 
@@ -145,7 +163,7 @@ class SavedURLBookmark {
 
     public:
 
-        SavedURLBookmark(int _id, const char* _label, const char* _url, const char* _date) {
+        SavedURLBookmark(int _id, std::string _label, std::string _url, std::string _date) {
 
             std::string intervalue_buffer(7, ' ');
 
@@ -157,6 +175,158 @@ class SavedURLBookmark {
             row_display_content = label + intervalue_buffer + url + intervalue_buffer + date;
 
         }
+
+        int getid() {
+            return id;
+        }
+
+        std::string getlabel() {
+            return label;
+        }
+
+        void setlabel(std::string _label) {
+            label = _label;
+        }
+
+        std::string geturl() {
+            return url;
+        }
+
+        std::string getdate() {
+            return date;
+        }
+
+        std::string getrow_display_content() {
+            return row_display_content;
+        }
+
+        void clear() {
+
+            id = 0;
+            label = "";
+            url = "";
+            date = "";
+            row_display_content = "";
+
+        }
+
+};
+
+class SavedURLBookmarkContainer {
+
+    private:
+
+        std::vector<SavedURLBookmark> SavedURLBookmarks;
+        SQLiteInterface& SQLiteIntrfc;
+
+        int current_index = 0;
+        int size = 0;
+
+    public:
+    
+        void ClearList() {
+
+            SavedURLBookmarks.clear();
+            current_index = 0;
+            size = 0;
+
+        }
+    
+        std::string CharArrayToStringWithNullCheck(const char* str) {
+            return (str == nullptr) ? "" : (std::string)(str);
+        }
+
+        void ParseDBQueryContentsToList() {
+
+            statement& fetch_statement = SQLiteIntrfc.get_fetch_statement();
+            sqlite3_stmt* stmt = fetch_statement.get();
+            
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+
+                int id = sqlite3_column_int(stmt, 0);
+                const char* label = reinterpret_cast<const char*> (sqlite3_column_text(stmt, 1));
+                const char* url = reinterpret_cast<const char*> (sqlite3_column_text(stmt, 2));
+                const char* date = reinterpret_cast<const char*> (sqlite3_column_text(stmt, 3));
+                
+                SavedURLBookmark NewBookmark(
+                    
+                    id,
+                    CharArrayToStringWithNullCheck(label),
+                    CharArrayToStringWithNullCheck(url),
+                    CharArrayToStringWithNullCheck(date)
+                    
+                );
+
+                SavedURLBookmarks.push_back(NewBookmark);
+
+            }
+
+            size = SavedURLBookmarks.size();
+
+        }
+
+        void RefreshList() {
+
+            ClearList();
+            ParseDBQueryContentsToList();
+
+        }
+
+        void DeleteDBRowById(int id) {
+            
+            statement& delete_statement = SQLiteIntrfc.get_delete_statement();
+            sqlite3_stmt* stmt = delete_statement.get();
+            sqlite3_bind_int64(stmt, 0, id);
+
+            if (sqlite3_step(stmt) != SQLITE_DONE) {
+                std::cerr << "Error deleting bookmark." << std::endl;
+            }
+
+        }
+
+        void DeleteBookFromListByIndex(int idx) {
+
+            if (size <= 0) {
+                return;
+            }
+
+            SavedURLBookmarks.erase(SavedURLBookmarks.begin() + idx);
+            current_index = std::max(0, current_index - 1);
+
+        }
+        
+        void DeleteCurrentBookListEntry() {
+            DeleteBookFromListByIndex(current_index);
+        }
+
+        void DeleteHoveredRowFromListAndDB() {
+
+            int id = SavedURLBookmarks[current_index].getid();
+            DeleteDBRowById(id);
+            DeleteCurrentBookListEntry();
+
+        }
+
+        int get_current_index() {
+            return current_index;
+        }
+
+        void print() {
+
+            for (int i = 0; i < size; ++i) {
+                std::cout << SavedURLBookmarks[i].getid() << ", " << SavedURLBookmarks[i].getlabel() << std::endl;
+            }
+
+        }
+
+        SavedURLBookmarkContainer(SQLiteInterface& _SQLiteIntrfc) : SQLiteIntrfc(_SQLiteIntrfc) {
+
+            assert(SQLiteIntrfc.is_valid_connection());
+
+            RefreshList();
+
+        }
+
 
 };
 
@@ -296,14 +466,14 @@ class ImGuiInterface {
     private:
 
         ImGuiIO* io;
-        GLFWInterface GLFWInterface_Reference;
+        GLFWInterface* GLFWInterface_Reference;
         
         void setup() { 
             
             io -> IniFilename = "../build/imgui.ini";
             io -> ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
             
-            ImGui_ImplGlfw_InitForOpenGL(GLFWInterface_Reference.GetGLFWWindow(), true);          
+            ImGui_ImplGlfw_InitForOpenGL(GLFWInterface_Reference -> GetGLFWWindow(), true);          
             ImGui_ImplOpenGL3_Init();
             
             IMGUI_CHECKVERSION();
@@ -313,7 +483,7 @@ class ImGuiInterface {
         
     public:
         
-        ImGuiInterface(GLFWInterface _GLFWInterface) : GLFWInterface_Reference(_GLFWInterface) {
+        ImGuiInterface(GLFWInterface &_GLFWInterface) : GLFWInterface_Reference(&_GLFWInterface) {
     
             ImGui::CreateContext();
             io = &ImGui::GetIO();
@@ -333,11 +503,11 @@ class ImGuiInterface {
 
             ImGui::Render();
 
-            GLFWInterface_Reference.GLFWRenderFrameProcess();
+            GLFWInterface_Reference -> GLFWRenderFrameProcess();
 
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-            GLFWInterface_Reference.GLFWSwapBuffers();
+            GLFWInterface_Reference -> GLFWSwapBuffers();
 
         }
 
@@ -405,7 +575,6 @@ void ImGuiLayout_URLButtonsAndInputChild(std::vector<std::string>& strings) {
     ImVec2 origin(12, 180);
     int child_width = 542;
     int child_height = 34;
-    
 
     ImGui::SetCursorPos(ImVec2(origin.x,origin.y));
 	ImGui::BeginChild(14, ImVec2(child_width, child_height), true);
@@ -428,8 +597,7 @@ void ImGuiLayout_URLButtonsAndInputChild(std::vector<std::string>& strings) {
 
 }
 
-std::vector<std::string> strings = {"Never", "Gonna", "Give", "You", "Up"};
-void ImGuiLayout_URLListBoxChild() {
+void ImGuiLayout_URLListBoxChild(SavedURLBookmarkContainer List) {
 
     ImGui::SetCursorPos(ImVec2(12,45));
 	ImGui::BeginChild(13, ImVec2(550,-13), false);
@@ -488,6 +656,8 @@ int main(int argc, char** argv) {
     GLFWInterface GLFWIntrfc("URL Keeper", dims);
     ImGuiInterface ImGuiIntrfc(GLFWIntrfc);
 
+    SavedURLBookmarkContainer List(SQLiteIntrfc);
+
     while (GLFWIntrfc.is_still_open()) {
         
         glfwPollEvents();
@@ -500,6 +670,10 @@ int main(int argc, char** argv) {
 
 
         if (ImGui::IsMouseClicked(0)) {
+
+            List.RefreshList();
+            List.print();
+
             PrintMousePos();
         }
 

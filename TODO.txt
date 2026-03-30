@@ -1,0 +1,6 @@
+*** TODO ***
+
+- Almost done with Bookmark class implementation, just need to populate ImGui list with Bookmark list
+    - by going into ImGuiWindow_MainWindow, ImGuiLayout_URLListBoxChild, and ImGuiLayout_URLButtonsAndInputChild
+    
+- Replace int_pair class instance with ImVec2(x, y) for simplicity
