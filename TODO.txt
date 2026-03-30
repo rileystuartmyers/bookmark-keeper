@@ -1,6 +1,21 @@
 *** TODO ***
 
-- Almost done with Bookmark class implementation, just need to populate ImGui list with Bookmark list
-    - by going into ImGuiWindow_MainWindow, ImGuiLayout_URLListBoxChild, and ImGuiLayout_URLButtonsAndInputChild
-    
-- Replace int_pair class instance with ImVec2(x, y) for simplicity
+- Cut off strings in each label, url, and date-added field with ellipses if they go past a certain length
+
+- Add Delete and Add buttons
+
+- Add new window for editing existing entry by double clicking it
+
+- Copy entry to clipboard by right clicking it
+    - also add little disclaimer somewhere saying "Copied!"
+
+- Find appropriate places to store out-of-function variables for ImGui functions, such as in existing classes or adding to custom ImGui variable-holding class
+
+- Add text label somewhere in the program that tells user how to edit and copy strings with left and right click
+
+- Add window on Add button click that asks for url,
+optional label and autofilled date added
+
+- Decorate with new colors and stylings in UI after functionality is further worked on
+
+- Support for Windows OS
