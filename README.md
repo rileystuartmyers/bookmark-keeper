@@ -37,12 +37,12 @@ Designed for speed and simplicity and lets you quickly store, view, copy, and de
 ```
 ├── src/
 │   └── main.cpp
+│   └── Makefile
 ├── include/
 │   └── third_party/
 │       ├── imgui/
 │       └── sqlite3/
 ├── build/
-├── Makefile
 └── README.md
 ```
 ---
