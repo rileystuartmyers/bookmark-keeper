@@ -34,6 +34,7 @@ Designed for speed and simplicity and lets you quickly store, view, copy, and de
 
 ## Project Structure
 
+.
 ├── src/
 │   └── main.cpp
 ├── include/
