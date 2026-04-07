@@ -1,4 +1,4 @@
-# 📌 URL Keeper
+# bookmark-keeper
 
 A lightweight desktop bookmark manager built with **C++**, **ImGui**, **GLFW**, and **SQLite**.
 
@@ -6,24 +6,23 @@ Designed for speed and simplicity, URL Keeper lets you quickly store, view, copy
 
 ---
 
-## ✨ Features
+## Features
 
-- 📋 Add and store URLs with automatic labeling
+- ⚡ Fast, minimal, no bloat
+- 📋 Add and delete URLs with automatic labeling
 - 🗂 Persistent storage using SQLite
 - 🖱 Select, double-click, and manage entries via ImGui UI
 - 📎 Copy URLs to clipboard
-- ❌ Delete individual entries or clear all
-- ⚡ Fast, minimal, no bloat
 
 ---
 
-## 🖼 Preview
+## Preview
 
-(Add a screenshot here)
+>
 
 ---
 
-## 🏗 Dependencies
+## Dependencies
 
 - C++17
 - GLFW
@@ -33,9 +32,8 @@ Designed for speed and simplicity, URL Keeper lets you quickly store, view, copy
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
-.
 ├── src/
 │   └── main.cpp
 ├── include/
@@ -48,7 +46,7 @@ Designed for speed and simplicity, URL Keeper lets you quickly store, view, copy
 
 ---
 
-## ⚙️ Build Instructions
+## Build Instructions
 
 ### Linux
 
@@ -71,20 +69,12 @@ main.exe
 
 ---
 
-### macOS
+## Usage
 
-brew install glfw sqlite
-
-make
-
----
-
-## 🧠 Usage
-
-- Add URL: type and press Enter
-- Select: click row
-- Copy: right click
-- Delete: Delete key or button
+- Select: Click row
+- Copy: Hover over a row and right click
+- Add URL: Type in text box and press Enter or 'Add' button
+- Delete URL: Select a row and press the Delete keyboard key or 'Delete' button
 
 ---
 
@@ -96,12 +86,3 @@ CREATE TABLE BOOKMARKS (
     url TEXT,
     date TEXT
 );
-
----
-
-## 🚀 Future Improvements
-
-- Search/filter
-- Edit entries
-- Sorting
-- Import/export
