@@ -2,7 +2,7 @@
 
 A lightweight desktop bookmark manager built with **C++**, **ImGui**, **GLFW**, and **SQLite**.
 
-Designed for speed and simplicity, URL Keeper lets you quickly store, view, copy, and delete URLs in a minimal UI.
+Designed for speed and simplicity and lets you quickly store, view, copy, and delete URLs in a minimal UI.
 
 ---
 
