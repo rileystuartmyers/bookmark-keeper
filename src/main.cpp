@@ -51,25 +51,61 @@ class SavedURLBookmark {
         std::string date;
         std::string row_display_content;
 
+        int MAX_LABEL_LENGTH = 14;
+        int MAX_URL_LENGTH = 45;
+        int MAX_DATE_LENGTH = 10;
+        int INTER_STRING_SPACE_BUFFER = 2;
+
     public:
 
-        SavedURLBookmark(int _id, std::string _label, std::string _url, std::string _date) {
+        std::string ShortenedStringIfLongerThanN(std::string str, size_t n) {
 
-            std::string intervalue_buffer(20, ' ');
+            if ( (n <= 3) || (str.length() <= n) ){
+                return str;
+            }
+
+            std::string shortened_str = str.substr(0, n - 3);
+            shortened_str += "...";
+            return shortened_str;
+
+        }
+
+        std::string BackfilledStringWithSpacesToLengthOfN(std::string str, size_t n) {
+
+            if (str.length() < n) {
+                std::string filler_str(n - str.length(), ' ');
+                return str + filler_str;
+            } else{
+                return str;
+            }
+        }
+
+        SavedURLBookmark(int _id, std::string _label, std::string _url, std::string _date) {
 
             id = _id;
             label = _label;
             url = _url;
             date = _date;
 
-            row_display_content = label + intervalue_buffer + url + intervalue_buffer + date;
             
-            std::cout << label << " " << url << " " << date << std::endl;
-            std::cout << row_display_content << std::endl;
+            std::string label_substr = ShortenedStringIfLongerThanN(label, MAX_LABEL_LENGTH);
+            std::string label_section = BackfilledStringWithSpacesToLengthOfN(label_substr, MAX_LABEL_LENGTH + INTER_STRING_SPACE_BUFFER);
+
+            std::string url_substr = ShortenedStringIfLongerThanN(url, MAX_URL_LENGTH);
+            std::string url_section = BackfilledStringWithSpacesToLengthOfN(url_substr, MAX_URL_LENGTH + INTER_STRING_SPACE_BUFFER);
+            
+            std::string date_section = ShortenedStringIfLongerThanN(date, MAX_DATE_LENGTH);
+
+            row_display_content = label_section + url_section + date_section;
+        
         }
 
         int getid() {
             return id;
+        }
+
+        void updateid(int _id) {
+            id = _id;
         }
 
         std::string getlabel() {
@@ -115,6 +151,8 @@ struct precompiled_sqliteStatements {
     statement insert_stmt;
     statement delete_stmt;
     statement download_stmt;
+    statement cleartable_stmt;
+    statement lastindex_stmt;
     statement vacuum_stmt;
 
     precompiled_sqliteStatements(sqlite3* db_ptr) :
@@ -145,7 +183,21 @@ struct precompiled_sqliteStatements {
         download_stmt(
             create_statement(
                 db,
-                "SELECT url FROM BOOKMARKS"
+                "SELECT url FROM BOOKMARKS;"
+            )
+        ),
+
+        cleartable_stmt(
+            create_statement(
+                db,
+                "DELETE FROM BOOKMARKS;"
+            )
+        ),
+
+        lastindex_stmt(
+            create_statement(
+                db,
+                "SELECT last_insert_rowid();"
             )
         ),
 
@@ -169,8 +221,7 @@ class SQLiteInterface {
         const char* directory;
         sqlite3* db_connection;
         std::unique_ptr<precompiled_sqliteStatements> statements;
-        int return_code;
-
+        
         void initialize_connection() {
             
             return_code = sqlite3_open(
@@ -183,7 +234,7 @@ class SQLiteInterface {
         };
         
         void setup() {
-
+                        
             return_code = sqlite3_initialize();
             
             if (return_code != SQLITE_OK) {
@@ -194,6 +245,8 @@ class SQLiteInterface {
 
     public:
     
+        int return_code;
+
         bool is_valid_connection() {
             return (db_connection != nullptr);
         }
@@ -247,6 +300,19 @@ class SQLiteInterface {
 
         }
 
+        void clear_table() {
+
+            statement& cleartable_statement = statements -> cleartable_stmt;
+            sqlite3_stmt* stmt = cleartable_statement.get();
+
+            if (sqlite3_step(stmt) != SQLITE_DONE) {
+                throw std::runtime_error("Failed to clear table...");
+            }
+
+            refresh_statement(cleartable_statement);
+
+        }
+
         statement& get_fetch_statement() {
             refresh_statement(statements -> fetch_stmt);
             return statements -> fetch_stmt;
@@ -261,6 +327,16 @@ class SQLiteInterface {
             refresh_and_clear_bindings_of_statement(statements -> delete_stmt);
             return statements -> delete_stmt;
         }
+
+        statement& get_cleartable_statement() {
+            refresh_statement(statements -> cleartable_stmt);
+            return statements -> cleartable_stmt;
+        }
+
+        statement& get_lastindex_statement() {
+            refresh_statement(statements -> lastindex_stmt);
+            return statements -> lastindex_stmt;
+        }
         
         SQLiteInterface(const char* _directory) : directory(_directory) {
             initialize_connection();
@@ -274,14 +350,14 @@ class SavedURLBookmarkContainer {
 
     private:
 
-        std::vector<SavedURLBookmark> SavedURLBookmarks;
-        SQLiteInterface& SQLiteIntrfc;
-
-        int current_index = 0;
-        int size = 0;
-
+    SQLiteInterface& SQLiteIntrfc;
+    int size = 0;
+    
     public:
     
+        std::vector<SavedURLBookmark> SavedURLBookmarks;
+        int current_index = 0;
+
         void ClearList() {
 
             SavedURLBookmarks.clear();
@@ -290,6 +366,14 @@ class SavedURLBookmarkContainer {
 
         }
 
+        int get_return_code() {
+            return SQLiteIntrfc.return_code;
+        }
+
+        int get_current_book_id() {
+            return SavedURLBookmarks[current_index].getid();
+        }
+        
         void insert_bookmark_into_db(SavedURLBookmark Bookmark) {
             SQLiteIntrfc.insert_bookmark(Bookmark);
         }
@@ -323,6 +407,8 @@ class SavedURLBookmarkContainer {
 
             }
 
+            std::cout << "_____________" << std::endl;
+
             size = SavedURLBookmarks.size();
 
         }
@@ -336,13 +422,19 @@ class SavedURLBookmarkContainer {
 
         void DeleteDBRowById(int id) {
             
+            std::cout << "DeleteDBRowById(): " << id << std::endl;
+
             statement& delete_statement = SQLiteIntrfc.get_delete_statement();
             sqlite3_stmt* stmt = delete_statement.get();
             sqlite3_bind_int64(stmt, 1, id);
 
+            
             if (sqlite3_step(stmt) != SQLITE_DONE) {
                 std::cerr << "Error deleting bookmark." << std::endl;
             }
+
+            SQLiteIntrfc.refresh_and_clear_bindings_of_statement(delete_statement);
+
 
         }
 
@@ -352,7 +444,13 @@ class SavedURLBookmarkContainer {
                 return;
             }
 
+            std::cout << "Deletion index; " << std::endl;
+
+            std::cout << SavedURLBookmarks[idx].geturl() << std::endl;
+
             SavedURLBookmarks.erase(SavedURLBookmarks.begin() + idx);
+            std::cout << SavedURLBookmarks[idx].geturl() << std::endl;
+
             current_index = std::max(0, current_index - 1);
             size--;
 
@@ -365,13 +463,33 @@ class SavedURLBookmarkContainer {
         void DeleteHoveredRowFromListAndDB() {
 
             int id = SavedURLBookmarks[current_index].getid();
-            DeleteDBRowById(id);
+            std::cout << "DeleteHoveredRowFromListAndDB(): " << id << std::endl;
             DeleteCurrentBookListEntry();
+            DeleteDBRowById(id);
 
         }
 
         int get_current_index() {
             return current_index;
+        }
+
+        int get_lastindex() {
+
+            statement& insert_statement = SQLiteIntrfc.get_lastindex_statement();
+            SQLiteIntrfc.refresh_statement(insert_statement);
+
+            sqlite3_stmt* stmt = insert_statement.get();
+
+            if (sqlite3_step(stmt) != SQLITE_ROW) {
+                throw std::runtime_error("Failed to retrieve last index from DB...");
+            }
+
+
+            int last_index = sqlite3_column_int(stmt, 0);
+            std::cout << "get_lastindex(): " << last_index << std::endl;
+
+            return last_index;
+
         }
 
         void push_back(SavedURLBookmark Bookmark) {
@@ -477,7 +595,7 @@ class GLFWInterface {
     public:
         
         bool exists() {
-            return (Window.GLFWWindow == nullptr);
+            return (Window.GLFWWindow != nullptr);
         }
         
         void GLFWRenderFrameProcess() {
@@ -621,9 +739,95 @@ bool SelectedEqualToCurrent(int first, int second) {
     return first == second;
 }
 
+std::string GetMDYDateAsString() {
+
+    char date_str[11];
+    time_t now = time(0);
+    strftime(date_str, sizeof(date_str), "%m/%d/%Y", localtime(&now));
+
+    return date_str;
+
+}
 
 const int URL_BUFFER_SIZE = 128;
+const int LABEL_BUFFER_SIZE = 128;
 char url_text_buffer[URL_BUFFER_SIZE] = "";
+char label_text_buffer[LABEL_BUFFER_SIZE] = "";
+
+std::string GetHostNameFromURL(std::string url) {
+
+    if (url.length() <= 3) {
+        return url;
+    }
+
+    std::string url_hostname;
+    int start_index = -1;
+    int end_index = -1;
+
+    for (size_t i = 0; i < url.length(); ++i) {
+
+        if ( (start_index < 0) && (url[i] == '/') && (url[i + 1] == '/') ) {
+            start_index = i + 2;
+        }
+
+        if ( (end_index < 0) && (url[i] == '.') ) {
+            end_index = i - 1;
+        }
+
+    }
+
+    start_index = std::max(start_index, 0);
+
+    if (end_index <= 0) {
+        end_index = url.length() - 1;
+    }
+    
+    url_hostname = url.substr(start_index, end_index - start_index + 1);
+    return url_hostname;
+
+}
+
+void AddBufferContentsToList(SavedURLBookmarkContainer& ListContainer) {
+
+    //Determine last index 
+    if (url_text_buffer[0] == '\0') {
+        return;
+    }
+
+    std::string url_hostname = GetHostNameFromURL(url_text_buffer);
+    std::string url_buffer_copy = url_text_buffer;
+    std::string date_str = GetMDYDateAsString();
+
+    SavedURLBookmark NewBookmark(
+        -1,
+        url_hostname,
+        url_buffer_copy,
+        date_str
+    );
+
+    ListContainer.insert_bookmark_into_db(NewBookmark);
+    int DBAutoIncrementedID = ListContainer.get_lastindex();
+    std::cout << "AddBufferContentsToList(): " << DBAutoIncrementedID << std::endl;
+
+    NewBookmark.updateid(DBAutoIncrementedID);
+
+    ListContainer.push_back(NewBookmark);
+
+    url_text_buffer[0] = '\0';
+
+}
+
+void DeleteAllInstancesOfCurrentRow(SavedURLBookmarkContainer& ListContainer) {
+
+    if (ListContainer.get_size() <= 0) {
+        std::cout << "blah blah" << std::endl;
+        return;
+    }
+
+    ListContainer.DeleteHoveredRowFromListAndDB();
+
+}
+
 void ImGuiLayout_URLButtonsAndInputChild(SavedURLBookmarkContainer& ListContainer) {
 
     ImVec2 origin(12, 180);
@@ -641,51 +845,65 @@ void ImGuiLayout_URLButtonsAndInputChild(SavedURLBookmarkContainer& ListContaine
         "##url_input", 
         url_text_buffer, 
         IM_ARRAYSIZE(url_text_buffer), 
-        ImGuiInputTextFlags_EnterReturnsTrue)) {
-
-            std::string buffer_copy = url_text_buffer;
-
-            SavedURLBookmark NewBookmark(
-                10,
-                "blarg",
-                buffer_copy,
-                "12/12/2024"
-            );
-
-            ListContainer.insert_bookmark_into_db(NewBookmark);
-            ListContainer.push_back(NewBookmark);
-            std::cout << "pushed back" << buffer_copy << std::endl;
-            url_text_buffer[0] = '\0';
-
+        ImGuiInputTextFlags_EnterReturnsTrue)) 
+        {
+            AddBufferContentsToList(ListContainer);
+            ImGui::SetKeyboardFocusHere(-1);
     }   
 
+    ImVec2 AddButtonOrigin(458 - origin.x, 187 - origin.y);
+    ImGui::SetCursorPos(ImVec2(458 - origin.x, 187 - origin.y));
+    if (ImGui::Button(
+        "Add", 
+        ImVec2(490 - AddButtonOrigin.x - origin.x, 205 - AddButtonOrigin.y - origin.y))) 
+        {
+            AddBufferContentsToList(ListContainer);
+    }
+
+    ImVec2 DeleteButtonOrigin(497 - origin.x, 187 - origin.y);
+    ImGui::SetCursorPos(ImVec2(497 - origin.x, 187 - origin.y));
+    if (ImGui::Button(
+        "Delete", 
+        ImVec2(547 - DeleteButtonOrigin.x - origin.x, 205 - DeleteButtonOrigin.y - origin.y))) 
+        {
+            DeleteAllInstancesOfCurrentRow(ListContainer);
+            ListContainer.RefreshList();
+
+    }
+    
     ImGui::EndChild();
 
 }
 
-void ImGuiLayout_URLListBoxChild(SavedURLBookmarkContainer ListContainer) {
+void ImGuiLayout_URLListBoxChild(SavedURLBookmarkContainer& ListContainer) {
 
     ImGui::SetCursorPos(ImVec2(12,45));
 	ImGui::BeginChild(13, ImVec2(550,-13), false);
 
 	ImGui::SetCursorPos(ImVec2(0,0));
 
-    std::vector<SavedURLBookmark> List = ListContainer.get_bookmarks_list();
-    static int current_item = 0;
     if (ImGui::BeginListBox("##", ImVec2(542, 130))) {
         for (size_t i = 0; i < ListContainer.get_size(); ++i) {
             
             if (ImGui::Selectable(
-                List[i].formatted_display_string(), 
-                SelectedEqualToCurrent(i, current_item), 
+                ListContainer.SavedURLBookmarks[i].formatted_display_string(), 
+                SelectedEqualToCurrent(i, ListContainer.current_index), 
                 ImGuiSelectableFlags_AllowDoubleClick)) {
 
-                    current_item = i;
+                    ListContainer.current_index = i;
             
             }
 
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-                std::cout << "Double clicked: " << i << std::endl;
+            if (ImGui::IsItemHovered()) {
+
+                if (ImGui::IsMouseDoubleClicked(0)) {
+                    std::cout << "Currently selected book with id " << ListContainer.get_current_book_id() << '\n';
+                } else if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+                    DeleteAllInstancesOfCurrentRow(ListContainer);
+                    ListContainer.RefreshList();
+                }
+                
+
             }
             
         }
@@ -717,8 +935,6 @@ void ImGuiWindow_MainWindow(SavedURLBookmarkContainer& ListContainer, ImVec2 dim
 
 }
 
-
-
 int main(int argc, char** argv) {
 
     ImVec2 dims(568, 220);
@@ -730,6 +946,18 @@ int main(int argc, char** argv) {
     ImGuiInterface ImGuiIntrfc(GLFWIntrfc);
     SavedURLBookmarkContainer List(SQLiteIntrfc);
 
+    if (argc > 1) {
+        if (strcmp(argv[1], "clear") == 0) {
+            SQLiteIntrfc.clear_table();
+        } else if (strcmp(argv[1], "url") == 0) {
+
+            for (int i = 2; i < argc; ++i) {
+                std::cout << argv[i] << ":      " << GetHostNameFromURL(argv[i]) << std::endl;
+            }
+        }
+    }
+
+    List.RefreshList();
     while (GLFWIntrfc.is_still_open()) {
         
         glfwPollEvents();
@@ -740,13 +968,8 @@ int main(int argc, char** argv) {
         ImGuiIntrfc.ImGuiRenderWithGLFWProcess();
         
 
-
         if (ImGui::IsMouseClicked(0)) {
-
-            List.RefreshList();
-            List.print();
-
-            PrintMousePos();
+            //PrintMousePos();
         }
 
     }
