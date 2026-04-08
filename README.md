@@ -18,7 +18,7 @@ Designed for speed and simplicity and lets you quickly store, view, copy, and de
 
 ## Preview
 
->
+![Alt text](Program.png)
 
 ---
 
