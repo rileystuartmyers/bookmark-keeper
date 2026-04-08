@@ -4,7 +4,7 @@ SQLITE_DIR = ../include/third_party/sqlite3
 INCLUDE_DIR = ../include
 BUILD_DIR = ../build
 
-VPATH = . $(IMGUI_DIR) $(IMGUI_DIR)/backends $(INCLUDE_DIR) $(SQLITE_DIR)
+VPATH = . $(IMGUI_DIR) $(IMGUI_DIR)/backends $(INCLUDE_DIR) $(SQLITE_DIR) $(CLIPBOARDXX_DIR)
 
 SOURCES = main.cpp
 SOURCES += ${SQLITE_DIR}/sqlite3.c
@@ -16,17 +16,20 @@ OBJS := $(OBJS:.c=.o)
 OBJS := $(addprefix $(BUILD_DIR)/,$(notdir $(OBJS)))
 
 UNAME_S := $(shell uname -s)
-LINUX_GL_LIBS = -lGL
+
+LINUX_LIBS = -lGL -lglfw -lX11 -lpthread -lsqlite3
+
+WINDOWS_LIBS = -lglfw3 -lopengl32 -lgdi32 -lsqlite3
 
 
-CXXFLAGS = -std=c++17 -lstdc++fs -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall
+CXXFLAGS = -std=c++17 -lstdc++fs -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I$(CLIPBOARDXX_DIR) -I$(CLIPBOARDXX_DIR)/include  -Wall 
 CXXFLAGS += -g
 
 LIBS =
 
 ifeq ($(UNAME_S), Linux) #LINUX
 	ECHO_MESSAGE = "Linux"
-	LIBS += $(LINUX_GL_LIBS) `pkg-config --static --libs glfw3`
+	LIBS += $(LINUX_LIBS) `pkg-config --static --libs glfw3`
 	LIBS += `pkg-config --libs gtk+-3.0`
 
 	CXXFLAGS += `pkg-config --cflags glfw3`
@@ -47,7 +50,7 @@ endif
 
 ifeq ($(OS), Windows_NT)
 	ECHO_MESSAGE = "MinGW"
-	LIBS += -lglfw3 -lgdi32 -lopengl32 -limm32
+	LIBS += $(WINDOWS_LIBS)
 
 	CXXFLAGS += `pkg-config --cflags glfw3`
 	CFLAGS = $(CXXFLAGS)

@@ -10,9 +10,14 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
-#include <GLES2/gl2.h>
+#include <GL/gl.h>
 #include <GLFW/glfw3.h>
+
 #include <sqlite3.h>
+
+#if defined(_WIN32)
+    #include <windows.h>
+#endif
 
 bool IndexOutOfRange(int index, int size) {
 
@@ -373,7 +378,21 @@ class SavedURLBookmarkContainer {
         int get_current_book_id() {
             return SavedURLBookmarks[current_index].getid();
         }
+
+        std::string get_current_url() {
+            return SavedURLBookmarks[current_index].geturl();
+        }
         
+        std::string get_url_at_index(int idx) {
+
+            if (IndexOutOfRange(idx, size)) {
+                throw std::runtime_error("Failed to get URL at index... out of range.");
+            }
+
+            return SavedURLBookmarks[idx].geturl();
+           
+        }
+
         void insert_bookmark_into_db(SavedURLBookmark Bookmark) {
             SQLiteIntrfc.insert_bookmark(Bookmark);
         }
@@ -407,23 +426,27 @@ class SavedURLBookmarkContainer {
 
             }
 
-            std::cout << "_____________" << std::endl;
-
             size = SavedURLBookmarks.size();
 
         }
 
         void RefreshList() {
 
+            int current_index_temp = current_index;
+
             ClearList();
             ParseDBQueryContentsToList();
-
+            
+            if (current_index_temp >= size) {
+                current_index_temp = size - 1;
+            } else {
+                current_index = current_index_temp;
+            }
+            
         }
 
         void DeleteDBRowById(int id) {
             
-            std::cout << "DeleteDBRowById(): " << id << std::endl;
-
             statement& delete_statement = SQLiteIntrfc.get_delete_statement();
             sqlite3_stmt* stmt = delete_statement.get();
             sqlite3_bind_int64(stmt, 1, id);
@@ -444,12 +467,7 @@ class SavedURLBookmarkContainer {
                 return;
             }
 
-            std::cout << "Deletion index; " << std::endl;
-
-            std::cout << SavedURLBookmarks[idx].geturl() << std::endl;
-
             SavedURLBookmarks.erase(SavedURLBookmarks.begin() + idx);
-            std::cout << SavedURLBookmarks[idx].geturl() << std::endl;
 
             current_index = std::max(0, current_index - 1);
             size--;
@@ -461,9 +479,18 @@ class SavedURLBookmarkContainer {
         }
 
         void DeleteHoveredRowFromListAndDB() {
-
             int id = SavedURLBookmarks[current_index].getid();
-            std::cout << "DeleteHoveredRowFromListAndDB(): " << id << std::endl;
+            DeleteCurrentBookListEntry();
+            DeleteDBRowById(id);
+        }
+
+        void DeleteRowAtIndexFromListAndDB(int idx) {
+
+            if (IndexOutOfRange(idx, size)) {
+                throw std::runtime_error("Failed to delete row... index out of range.");
+            }
+
+            int id = SavedURLBookmarks[idx].getid();
             DeleteCurrentBookListEntry();
             DeleteDBRowById(id);
 
@@ -486,7 +513,6 @@ class SavedURLBookmarkContainer {
 
 
             int last_index = sqlite3_column_int(stmt, 0);
-            std::cout << "get_lastindex(): " << last_index << std::endl;
 
             return last_index;
 
@@ -654,7 +680,7 @@ class ImGuiInterface {
         
         
     public:
-        
+                
         ImGuiInterface(GLFWInterface &_GLFWInterface) : GLFWInterface_Reference(&_GLFWInterface) {
     
             ImGui::CreateContext();
@@ -742,8 +768,16 @@ bool SelectedEqualToCurrent(int first, int second) {
 std::string GetMDYDateAsString() {
 
     char date_str[11];
+    tm local_time;
     time_t now = time(0);
-    strftime(date_str, sizeof(date_str), "%m/%d/%Y", localtime(&now));
+
+    #if defined(_WIN32)
+        localtime_s(&local_time, &now);
+    #else
+        localtime_r(&now, &local_time);
+    #endif
+
+    strftime(date_str, sizeof(date_str), "%m/%d/%Y", &local_time);
 
     return date_str;
 
@@ -761,25 +795,33 @@ std::string GetHostNameFromURL(std::string url) {
     }
 
     std::string url_hostname;
-    int start_index = -1;
-    int end_index = -1;
+    int start_index = 0;
+    int end_index = (url.length() - 1);
 
-    for (size_t i = 0; i < url.length(); ++i) {
-
-        if ( (start_index < 0) && (url[i] == '/') && (url[i + 1] == '/') ) {
+    for (size_t i = 0; i < (size_t)end_index; ++i) {
+        if ( (url[i] == '/') && (url[i + 1] == '/') ) {
             start_index = i + 2;
+            break;
         }
-
-        if ( (end_index < 0) && (url[i] == '.') ) {
-            end_index = i - 1;
-        }
-
     }
 
-    start_index = std::max(start_index, 0);
+    for (size_t i = 0; i < url.length() - 3; ++i) {
 
-    if (end_index <= 0) {
-        end_index = url.length() - 1;
+        if (
+            (url[i] == 'w'     || url[i] == 'W') && 
+            (url[i + 1] == 'w' || url[i + 1] == 'W') && 
+            (url[i + 2] == 'w' || url[i + 2] == 'W') && 
+            (url[i + 3] == '.')
+        ) {
+            start_index = i + 4;
+            break;
+        }
+    }
+        
+    for (size_t i = start_index; i < url.length(); ++i) {
+        if (url[i] == '.') {
+            end_index = i - 1;
+        }
     }
     
     url_hostname = url.substr(start_index, end_index - start_index + 1);
@@ -807,7 +849,6 @@ void AddBufferContentsToList(SavedURLBookmarkContainer& ListContainer) {
 
     ListContainer.insert_bookmark_into_db(NewBookmark);
     int DBAutoIncrementedID = ListContainer.get_lastindex();
-    std::cout << "AddBufferContentsToList(): " << DBAutoIncrementedID << std::endl;
 
     NewBookmark.updateid(DBAutoIncrementedID);
 
@@ -820,7 +861,16 @@ void AddBufferContentsToList(SavedURLBookmarkContainer& ListContainer) {
 void DeleteAllInstancesOfCurrentRow(SavedURLBookmarkContainer& ListContainer) {
 
     if (ListContainer.get_size() <= 0) {
-        std::cout << "blah blah" << std::endl;
+        return;
+    }
+
+    ListContainer.DeleteHoveredRowFromListAndDB();
+
+}
+
+void DeleteAllInstancesOfRowWithIndex(SavedURLBookmarkContainer& ListContainer, int idx) {
+
+    if ( (ListContainer.get_size() <= 0) || IndexOutOfRange(idx, ListContainer.get_size()) ){
         return;
     }
 
@@ -875,7 +925,16 @@ void ImGuiLayout_URLButtonsAndInputChild(SavedURLBookmarkContainer& ListContaine
 
 }
 
-void ImGuiLayout_URLListBoxChild(SavedURLBookmarkContainer& ListContainer) {
+void CopyStringToClipboard(GLFWwindow* Window, const std::string& str) {
+    glfwSetClipboardString(Window, str.c_str());
+}
+
+void LINUXSYSTEM_PasteStringToClipboard(std::string str) {
+    std::string cmd = "echo \"" + str + "\"| xclip -selection clipboard";
+    system(cmd.c_str());
+}
+
+void ImGuiLayout_URLListBoxChild(GLFWwindow* Window, SavedURLBookmarkContainer& ListContainer) {
 
     ImGui::SetCursorPos(ImVec2(12,45));
 	ImGui::BeginChild(13, ImVec2(550,-13), false);
@@ -887,7 +946,7 @@ void ImGuiLayout_URLListBoxChild(SavedURLBookmarkContainer& ListContainer) {
             
             if (ImGui::Selectable(
                 ListContainer.SavedURLBookmarks[i].formatted_display_string(), 
-                SelectedEqualToCurrent(i, ListContainer.current_index), 
+                (ListContainer.current_index == (int)i), 
                 ImGuiSelectableFlags_AllowDoubleClick)) {
 
                     ListContainer.current_index = i;
@@ -896,18 +955,27 @@ void ImGuiLayout_URLListBoxChild(SavedURLBookmarkContainer& ListContainer) {
 
             if (ImGui::IsItemHovered()) {
 
-                if (ImGui::IsMouseDoubleClicked(0)) {
-                    std::cout << "Currently selected book with id " << ListContainer.get_current_book_id() << '\n';
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+
+                    //std::cout << "Currently selected book with id " << ListContainer.get_current_book_id() << '\n';
+
+                } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+
+                    CopyStringToClipboard(Window, ListContainer.get_url_at_index(i));
+
                 } else if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+
                     DeleteAllInstancesOfCurrentRow(ListContainer);
                     ListContainer.RefreshList();
-                }
-                
-
-            }
             
+                }
+            
+            }
+
         }
+
         ImGui::EndListBox();
+
     }
 
 	ImGui::EndChild();
@@ -915,7 +983,7 @@ void ImGuiLayout_URLListBoxChild(SavedURLBookmarkContainer& ListContainer) {
 }
 
 static bool ImGuiWindow_MainWindow_Status = true;
-void ImGuiWindow_MainWindow(SavedURLBookmarkContainer& ListContainer, ImVec2 dims) {
+void ImGuiWindow_MainWindow(GLFWInterface& GLFWIntrfc, SavedURLBookmarkContainer& ListContainer, ImVec2 dims) {
 
     ImGui::SetNextWindowSize(ImVec2(dims.x,dims.y));
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -925,9 +993,10 @@ void ImGuiWindow_MainWindow(SavedURLBookmarkContainer& ListContainer, ImVec2 dim
         &ImGuiWindow_MainWindow_Status,
           ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
         | ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoScrollbar
+        | ImGuiWindowFlags_NoBringToFrontOnFocus
     )) {
             ImGuiLayout_TextHeadersChild();
-            ImGuiLayout_URLListBoxChild(ListContainer);
+            ImGuiLayout_URLListBoxChild(GLFWIntrfc.GetGLFWWindow(), ListContainer);
             ImGuiLayout_URLButtonsAndInputChild(ListContainer);
     }
 
@@ -963,7 +1032,7 @@ int main(int argc, char** argv) {
         glfwPollEvents();
         ImGuiIntrfc.ImGuiNewFrameSetup();
         
-        ImGuiWindow_MainWindow(List, dims);
+        ImGuiWindow_MainWindow(GLFWIntrfc, List, dims);
         
         ImGuiIntrfc.ImGuiRenderWithGLFWProcess();
         

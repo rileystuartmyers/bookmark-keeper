@@ -1,18 +1,11 @@
 *** TODO ***
 
-- Add Delete button
-
 - Add new window for editing existing entry by double clicking it
 
 - Remove "www." from label string (if applicable)
-
-- Copy entry to clipboard by right clicking it
-    - also add little disclaimer somewhere saying "Copied!"
 
 - Find appropriate places to store out-of-function variables for ImGui functions, such as in existing classes or adding to custom ImGui variable-holding class
 
 - Add text label somewhere in the program that tells user how to edit and copy strings with left and right click
 
 - Decorate with new colors and stylings in UI after functionality is further worked on
-
-- Support for Windows OS

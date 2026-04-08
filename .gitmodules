@@ -4,3 +4,6 @@
 [submodule "include/third_party/imgui"]
 	path = include/third_party/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "include/third_party/ClipboardXX"]
+	path = include/third_party/ClipboardXX
+	url = https://github.com/Arian8j2/ClipboardXX.git
