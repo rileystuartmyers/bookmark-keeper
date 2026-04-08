@@ -14,11 +14,11 @@ Designed for speed and simplicity and lets you quickly store, view, copy, and de
 
 ## Features
 
-- ⚡ Fast, minimal, no bloat
-- 📋 Add and delete URLs with automatic labeling
-- 🗂 Persistent storage using SQLite
-- 🖱 Select, double-click, and manage entries via ImGui UI
-- 📎 Copy URLs to clipboard
+- Fast, minimal, no bloat
+- Add and delete URLs with automatic labeling
+- Select, double-click, and manage entries via ImGui UI
+- Copy URLs to clipboard
+- Persistent storage using SQLite
 
 ---
 
