@@ -788,6 +788,9 @@ const int LABEL_BUFFER_SIZE = 128;
 char url_text_buffer[URL_BUFFER_SIZE] = "";
 char label_text_buffer[LABEL_BUFFER_SIZE] = "";
 
+static bool ImGuiWindow_MainWindow_Status = true;
+static bool ImGuiWindow_EditWindow_Status = false;
+
 std::string GetHostNameFromURL(std::string url) {
 
     if (url.length() <= 3) {
@@ -957,7 +960,7 @@ void ImGuiLayout_URLListBoxChild(GLFWwindow* Window, SavedURLBookmarkContainer& 
 
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 
-                    //std::cout << "Currently selected book with id " << ListContainer.get_current_book_id() << '\n';
+                    ImGuiWindow_EditWindow_Status = true;
 
                 } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 
@@ -982,7 +985,59 @@ void ImGuiLayout_URLListBoxChild(GLFWwindow* Window, SavedURLBookmarkContainer& 
 
 }
 
-static bool ImGuiWindow_MainWindow_Status = true;
+void ImGuiWindow_EditWindow() {
+
+    ImGui::SetNextWindowSize(ImVec2(400,200));
+
+        if (ImGui::Begin(
+            "###EditWindow", 
+            &ImGuiWindow_EditWindow_Status,
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoScrollbar
+            )) {
+
+            ImGui::SetCursorPos(ImVec2(275,126));
+            ImGui::BeginChild(2, ImVec2(105,60), true);
+
+            ImGui::SetCursorPos(ImVec2(19,12));
+            ImGui::Button("Enter", ImVec2(80,40)); //remove size argument (ImVec2) to auto-resize
+
+            ImGui::EndChild();
+
+            ImGui::SetCursorPos(ImVec2(40,34));
+            ImGui::BeginChild(4, ImVec2(317,38), true);
+
+            ImGui::SetCursorPos(ImVec2(18,11));
+            ImGui::Text("Saved URL:");
+
+            ImGui::SetCursorPos(ImVec2(100,9));
+            ImGui::PushItemWidth(200); //NOTE: (Push/Pop)ItemWidth is optional
+            static char str6[128] = "";
+            ImGui::InputText("##SavedURL_Label", str6, IM_ARRAYSIZE(str6));
+            ImGui::PopItemWidth();
+
+            ImGui::EndChild();
+
+            ImGui::SetCursorPos(ImVec2(44,82));
+            ImGui::BeginChild(8, ImVec2(308,35), true);
+
+            ImGui::SetCursorPos(ImVec2(40,10));
+            ImGui::Text("Label:");
+
+            ImGui::SetCursorPos(ImVec2(94,8));
+            ImGui::PushItemWidth(200); //NOTE: (Push/Pop)ItemWidth is optional
+            static char str10[128] = "";
+            ImGui::InputText("##URLLabel_Label", str10, IM_ARRAYSIZE(str10));
+            ImGui::PopItemWidth();
+
+            ImGui::EndChild();
+
+        }
+
+        ImGui::End();
+
+}
+
 void ImGuiWindow_MainWindow(GLFWInterface& GLFWIntrfc, SavedURLBookmarkContainer& ListContainer, ImVec2 dims) {
 
     ImGui::SetNextWindowSize(ImVec2(dims.x,dims.y));
@@ -998,6 +1053,7 @@ void ImGuiWindow_MainWindow(GLFWInterface& GLFWIntrfc, SavedURLBookmarkContainer
             ImGuiLayout_TextHeadersChild();
             ImGuiLayout_URLListBoxChild(GLFWIntrfc.GetGLFWWindow(), ListContainer);
             ImGuiLayout_URLButtonsAndInputChild(ListContainer);
+            ImGuiWindow_EditWindow();
     }
 
     ImGui::End();
