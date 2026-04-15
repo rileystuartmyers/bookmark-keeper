@@ -19,6 +19,8 @@
     #include <windows.h>
 #endif
 
+static constexpr long unsigned int BUFFER_SIZE = 128;
+
 bool IndexOutOfRange(int index, int size) {
 
     if ( (index < 0) || (index >= size) ) {
@@ -121,6 +123,10 @@ class SavedURLBookmark {
             label = _label;
         }
 
+        void seturl(std::string _url) {
+            url = _url;
+        }
+
         std::string geturl() {
             return url;
         }
@@ -155,6 +161,7 @@ struct precompiled_sqliteStatements {
     statement fetch_stmt;
     statement insert_stmt;
     statement delete_stmt;
+    statement update_stmt;
     statement download_stmt;
     statement cleartable_stmt;
     statement lastindex_stmt;
@@ -182,6 +189,13 @@ struct precompiled_sqliteStatements {
             create_statement(
                 db,
                 "DELETE FROM BOOKMARKS WHERE id = ?;"
+            )
+        ),
+
+        update_stmt(
+            create_statement(
+                db,
+                "UPDATE BOOKMARKS SET url = ?, label = ? WHERE id = ?;"
             )
         ),
         
@@ -277,9 +291,7 @@ class SQLiteInterface {
 
             return_code = sqlite3_step(query);
             if (return_code != SQLITE_DONE) {
-                std::cerr << "Insertion failed :::> " << sqlite3_errmsg(db_connection) << std::endl;
-            } else {
-                std::cout << "Successful insertion..." << std::endl;
+                std::cerr << "Insertion failed :::> " << sqlite3_errmsg(db_connection) << '\n';
             }
 
             refresh_and_clear_bindings_of_statement(insert_statement);
@@ -296,12 +308,29 @@ class SQLiteInterface {
 
             return_code = sqlite3_step(query);
             if (return_code != SQLITE_DONE) {
-                std::cerr << "Insertion failed :::> " << sqlite3_errmsg(db_connection) << std::endl;
-            } else {
-                std::cout << "Successful insertion..." << std::endl;
+                std::cerr << "Insertion failed :::> " << sqlite3_errmsg(db_connection) << '\n';
             }
 
             refresh_and_clear_bindings_of_statement(insert_statement);
+
+        }
+
+        void update_bookmark(int id, std::string NewURL, std::string NewLabel) {
+
+            // "UPDATE BOOKMARKS SET url = ?, label = ? WHERE id = ?;"
+
+            statement& update_statement = statements -> update_stmt;
+            sqlite3_stmt* query = update_statement.get();
+            sqlite3_bind_text(query, 1, NewURL.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(query, 2, NewLabel.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int(query, 3, id);
+
+            return_code = sqlite3_step(query);
+            if (return_code != SQLITE_DONE) {
+                std::cerr << "Update failed :::> " << sqlite3_errmsg(db_connection) << '\n';
+            }
+
+            refresh_and_clear_bindings_of_statement(update_statement);
 
         }
 
@@ -331,6 +360,11 @@ class SQLiteInterface {
         statement& get_delete_statement() {
             refresh_and_clear_bindings_of_statement(statements -> delete_stmt);
             return statements -> delete_stmt;
+        }
+
+        statement& get_update_statement() {
+            refresh_and_clear_bindings_of_statement(statements -> update_stmt);
+            return statements -> update_stmt;
         }
 
         statement& get_cleartable_statement() {
@@ -379,10 +413,14 @@ class SavedURLBookmarkContainer {
             return SavedURLBookmarks[current_index].getid();
         }
 
+        std::string get_current_label() {
+            return SavedURLBookmarks[current_index].getlabel();
+        }
+
         std::string get_current_url() {
             return SavedURLBookmarks[current_index].geturl();
         }
-        
+
         std::string get_url_at_index(int idx) {
 
             if (IndexOutOfRange(idx, size)) {
@@ -393,8 +431,26 @@ class SavedURLBookmarkContainer {
            
         }
 
+        bool StringLengthIsInvalid(std::string InputString) {
+            if (InputString.length() <= 0 || InputString.length() >= BUFFER_SIZE) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
         void insert_bookmark_into_db(SavedURLBookmark Bookmark) {
             SQLiteIntrfc.insert_bookmark(Bookmark);
+        }
+
+        void update_bookmark_in_db(int id, const std::string& NewURL, const std::string& NewLabel) {
+
+            if (StringLengthIsInvalid(NewURL) || StringLengthIsInvalid(NewLabel)) {
+                return;
+            }
+
+            SQLiteIntrfc.update_bookmark(id, NewURL, NewLabel);
+            
         }
     
         std::string CharArrayToStringWithNullCheck(const char* str) {
@@ -453,11 +509,10 @@ class SavedURLBookmarkContainer {
 
             
             if (sqlite3_step(stmt) != SQLITE_DONE) {
-                std::cerr << "Error deleting bookmark." << std::endl;
+                std::cerr << "Error deleting bookmark." << '\n';
             }
 
             SQLiteIntrfc.refresh_and_clear_bindings_of_statement(delete_statement);
-
 
         }
 
@@ -471,6 +526,19 @@ class SavedURLBookmarkContainer {
 
             current_index = std::max(0, current_index - 1);
             size--;
+
+        }
+
+        void UpdateCurrentBookListEntry(std::string NewURL, std::string NewLabel) {
+
+            if (StringLengthIsInvalid(NewURL) || StringLengthIsInvalid(NewLabel)) {
+                return;
+            }
+            
+            SavedURLBookmark* CurrentBookmark = &SavedURLBookmarks[current_index];
+    
+            CurrentBookmark -> setlabel(NewLabel);
+            CurrentBookmark -> seturl(NewURL);
 
         }
         
@@ -526,7 +594,7 @@ class SavedURLBookmarkContainer {
         void print() {
 
             for (int i = 0; i < size; ++i) {
-                std::cout << SavedURLBookmarks[i].getid() << ", " << SavedURLBookmarks[i].getlabel() << std::endl;
+                std::cout << SavedURLBookmarks[i].getid() << ", " << SavedURLBookmarks[i].getlabel() << '\n';
             }
 
         }
@@ -739,7 +807,7 @@ void iterTextFile(const char* Path) {
 void PrintMousePos() {
 
     ImVec2 pos = ImGui::GetMousePos();
-    std::cout << "Clicked Position At: [" << pos.x << "," << pos.y << "]" << std::endl;
+    std::cout << "Clicked Position At: [" << pos.x << "," << pos.y << "]" << '\n';
 
 }
 
@@ -751,10 +819,10 @@ void ImGuiLayout_TextHeadersChild() {
 	ImGui::SetCursorPos(ImVec2(7.5,6));
 	ImGui::Text("Label:");
 
-	ImGui::SetCursorPos(ImVec2(108,6));
+	ImGui::SetCursorPos(ImVec2(116,6));
 	ImGui::Text("URL:");
 
-	ImGui::SetCursorPos(ImVec2(420,6));
+	ImGui::SetCursorPos(ImVec2(445,6));
 	ImGui::Text("Date Added:");
 
 	ImGui::EndChild();
@@ -782,14 +850,6 @@ std::string GetMDYDateAsString() {
     return date_str;
 
 }
-
-const int URL_BUFFER_SIZE = 128;
-const int LABEL_BUFFER_SIZE = 128;
-char url_text_buffer[URL_BUFFER_SIZE] = "";
-char label_text_buffer[LABEL_BUFFER_SIZE] = "";
-
-static bool ImGuiWindow_MainWindow_Status = true;
-static bool ImGuiWindow_EditWindow_Status = false;
 
 std::string GetHostNameFromURL(std::string url) {
 
@@ -832,7 +892,7 @@ std::string GetHostNameFromURL(std::string url) {
 
 }
 
-void AddBufferContentsToList(SavedURLBookmarkContainer& ListContainer) {
+void AddBufferContentsToList(SavedURLBookmarkContainer& ListContainer, char* url_text_buffer) {
 
     //Determine last index 
     if (url_text_buffer[0] == '\0') {
@@ -881,53 +941,6 @@ void DeleteAllInstancesOfRowWithIndex(SavedURLBookmarkContainer& ListContainer, 
 
 }
 
-void ImGuiLayout_URLButtonsAndInputChild(SavedURLBookmarkContainer& ListContainer) {
-
-    ImVec2 origin(12, 180);
-    int child_width = 542;
-    int child_height = 34;
-
-    ImGui::SetCursorPos(ImVec2(origin.x,origin.y));
-	ImGui::BeginChild(14, ImVec2(child_width, child_height), true);
-
-    ImGui::SetCursorPos(ImVec2(6,8));
-	ImGui::Text("Add String:");
-
-    ImGui::SetCursorPos(ImVec2(85,6));
-	if (ImGui::InputText(
-        "##url_input", 
-        url_text_buffer, 
-        IM_ARRAYSIZE(url_text_buffer), 
-        ImGuiInputTextFlags_EnterReturnsTrue)) 
-        {
-            AddBufferContentsToList(ListContainer);
-            ImGui::SetKeyboardFocusHere(-1);
-    }   
-
-    ImVec2 AddButtonOrigin(458 - origin.x, 187 - origin.y);
-    ImGui::SetCursorPos(ImVec2(458 - origin.x, 187 - origin.y));
-    if (ImGui::Button(
-        "Add", 
-        ImVec2(490 - AddButtonOrigin.x - origin.x, 205 - AddButtonOrigin.y - origin.y))) 
-        {
-            AddBufferContentsToList(ListContainer);
-    }
-
-    ImVec2 DeleteButtonOrigin(497 - origin.x, 187 - origin.y);
-    ImGui::SetCursorPos(ImVec2(497 - origin.x, 187 - origin.y));
-    if (ImGui::Button(
-        "Delete", 
-        ImVec2(547 - DeleteButtonOrigin.x - origin.x, 205 - DeleteButtonOrigin.y - origin.y))) 
-        {
-            DeleteAllInstancesOfCurrentRow(ListContainer);
-            ListContainer.RefreshList();
-
-    }
-    
-    ImGui::EndChild();
-
-}
-
 void CopyStringToClipboard(GLFWwindow* Window, const std::string& str) {
     glfwSetClipboardString(Window, str.c_str());
 }
@@ -937,128 +950,308 @@ void LINUXSYSTEM_PasteStringToClipboard(std::string str) {
     system(cmd.c_str());
 }
 
-void ImGuiLayout_URLListBoxChild(GLFWwindow* Window, SavedURLBookmarkContainer& ListContainer) {
+struct ImGuiWindow_EditWindowInstance {
 
-    ImGui::SetCursorPos(ImVec2(12,45));
-	ImGui::BeginChild(13, ImVec2(550,-13), false);
+    bool is_active = false;
 
-	ImGui::SetCursorPos(ImVec2(0,0));
+    int CurrentID = 0;
+    char CurrentLabelArr[BUFFER_SIZE];
+    char CurrentURLArr[BUFFER_SIZE];
+    
+    SavedURLBookmarkContainer& ListContainerReference;
 
-    if (ImGui::BeginListBox("##", ImVec2(542, 130))) {
-        for (size_t i = 0; i < ListContainer.get_size(); ++i) {
-            
-            if (ImGui::Selectable(
-                ListContainer.SavedURLBookmarks[i].formatted_display_string(), 
-                (ListContainer.current_index == (int)i), 
-                ImGuiSelectableFlags_AllowDoubleClick)) {
+    ImVec2 Dimensions = {300, 140};
+    ImVec2 Origin;
 
-                    ListContainer.current_index = i;
-            
-            }
+    int TextChildBox_Width = 280;
+    int TextChildBox_Height = 34;
+    int TextChildBox_LeftXValue = 0;
+    
+    int InputText_LeftChild_Padding = 100;
+    int Inputtext_UpperChild_Padding = 7;
+    int InputText_Width_Value = 175;
 
-            if (ImGui::IsItemHovered()) {
+    int EnterBoxWidth = 46;
+    int EnterBoxHeight = 20;
+    int EnterBox_CornerMargins_Value = 10;
 
-                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    ImGuiWindow_EditWindowInstance(SavedURLBookmarkContainer& ListContainer, ImVec2& Window_Dimensions) : ListContainerReference(ListContainer) {
 
-                    ImGuiWindow_EditWindow_Status = true;
+        Origin = {
+            (Window_Dimensions.x - Dimensions.x) / 2, 
+            (Window_Dimensions.y - Dimensions.y) / 2
+        };
 
-                } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    };
 
-                    CopyStringToClipboard(Window, ListContainer.get_url_at_index(i));
+    bool IsActive() {
+        return is_active;
+    }
 
-                } else if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+    void Activate() {
 
-                    DeleteAllInstancesOfCurrentRow(ListContainer);
-                    ListContainer.RefreshList();
-            
-                }
-            
-            }
+        
+        is_active = true;
+        
+        CurrentID = ListContainerReference.get_current_book_id();
 
-        }
-
-        ImGui::EndListBox();
+        std::string CurrentURLString = ListContainerReference.get_current_url();
+        std::string CurrentLabelString = ListContainerReference.get_current_label();
+        strcpy(CurrentURLArr, CurrentURLString.c_str());
+        strcpy(CurrentLabelArr, CurrentLabelString.c_str());
 
     }
 
-	ImGui::EndChild();
+    void Deactivate() {
 
-}
+        is_active = false;
 
-void ImGuiWindow_EditWindow() {
+        CurrentID = 0;
 
-    ImGui::SetNextWindowSize(ImVec2(400,200));
+        memset(CurrentURLArr, 0, sizeof(CurrentURLArr));
+        memset(CurrentLabelArr, 0, sizeof(CurrentLabelArr));
+
+    }
+
+    void UpdateURLInContainerAndDB() {
+
+        ListContainerReference.update_bookmark_in_db(CurrentID, CurrentURLArr, CurrentLabelArr);
+        ListContainerReference.UpdateCurrentBookListEntry(CurrentURLArr, CurrentLabelArr);
+        ListContainerReference.RefreshList();
+
+    }
+    
+    void Display() {
+        
+        ImGui::SetNextWindowPos(Origin);
+        ImGui::SetNextWindowSize(Dimensions);
 
         if (ImGui::Begin(
             "###EditWindow", 
-            &ImGuiWindow_EditWindow_Status,
+            &is_active,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
             ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoScrollbar
-            )) {
+        )) {    
 
-            ImGui::SetCursorPos(ImVec2(275,126));
-            ImGui::BeginChild(2, ImVec2(105,60), true);
+            int TitleWidth = ImGui::CalcTextSize("Edit an entry:").x;
+            int Title_LeftXValue = (Dimensions.x - TitleWidth) / 2;
 
-            ImGui::SetCursorPos(ImVec2(19,12));
-            ImGui::Button("Enter", ImVec2(80,40)); //remove size argument (ImVec2) to auto-resize
+            //@begin EditWindowTitleChildBox
+            ImGui::SetCursorPos(ImVec2(Title_LeftXValue, 10));
+            ImGui::Text("Edit an entry:");
 
-            ImGui::EndChild();
 
-            ImGui::SetCursorPos(ImVec2(40,34));
-            ImGui::BeginChild(4, ImVec2(317,38), true);
+            //@begin SavedURLChildBox
+            ImGui::SetCursorPos(ImVec2(TextChildBox_LeftXValue, 30));
+            ImGui::BeginChild(4, ImVec2(TextChildBox_Width, TextChildBox_Height), false);
 
             ImGui::SetCursorPos(ImVec2(18,11));
             ImGui::Text("Saved URL:");
 
-            ImGui::SetCursorPos(ImVec2(100,9));
-            ImGui::PushItemWidth(200); //NOTE: (Push/Pop)ItemWidth is optional
-            static char str6[128] = "";
-            ImGui::InputText("##SavedURL_Label", str6, IM_ARRAYSIZE(str6));
+            ImGui::SetCursorPos(ImVec2(InputText_LeftChild_Padding, Inputtext_UpperChild_Padding));
+            ImGui::PushItemWidth(InputText_Width_Value); //NOTE: (Push/Pop)ItemWidth is optional
+            if (ImGui::InputText("##SavedURL_Label", CurrentLabelArr, IM_ARRAYSIZE(CurrentLabelArr), ImGuiInputTextFlags_EnterReturnsTrue)) {
+
+                UpdateURLInContainerAndDB();
+                Deactivate();
+
+            }
             ImGui::PopItemWidth();
 
             ImGui::EndChild();
 
-            ImGui::SetCursorPos(ImVec2(44,82));
-            ImGui::BeginChild(8, ImVec2(308,35), true);
+            //@begin LabelChildBox
+            ImGui::SetCursorPos(ImVec2(TextChildBox_LeftXValue, 70));
+            ImGui::BeginChild(8, ImVec2(TextChildBox_Width, TextChildBox_Height), false);
 
-            ImGui::SetCursorPos(ImVec2(40,10));
+            ImGui::SetCursorPos(ImVec2(47,10));
             ImGui::Text("Label:");
 
-            ImGui::SetCursorPos(ImVec2(94,8));
-            ImGui::PushItemWidth(200); //NOTE: (Push/Pop)ItemWidth is optional
-            static char str10[128] = "";
-            ImGui::InputText("##URLLabel_Label", str10, IM_ARRAYSIZE(str10));
+            ImGui::SetCursorPos(ImVec2(InputText_LeftChild_Padding, Inputtext_UpperChild_Padding));
+            ImGui::PushItemWidth(InputText_Width_Value); //NOTE: (Push/Pop)ItemWidth is optional
+            if (ImGui::InputText("##URLLabel_Label", CurrentURLArr, IM_ARRAYSIZE(CurrentURLArr), ImGuiInputTextFlags_EnterReturnsTrue)) {
+                
+                UpdateURLInContainerAndDB();
+                Deactivate();
+
+            }
             ImGui::PopItemWidth();
 
             ImGui::EndChild();
+
+
+            //@begin EnterChildBox
+            ImGui::SetCursorPos(
+                ImVec2(
+                    Dimensions.x - EnterBoxWidth - EnterBox_CornerMargins_Value, 
+                    Dimensions.y - EnterBoxHeight - EnterBox_CornerMargins_Value
+                )
+            );
+            ImGui::BeginChild(2, ImVec2(EnterBoxWidth, EnterBoxHeight), false, ImGuiWindowFlags_NoScrollbar);
+            ImGui::SetCursorPos(ImVec2(0, 0));
+            if (ImGui::Button("Enter", ImVec2(EnterBoxWidth, EnterBoxHeight))) {
+
+                UpdateURLInContainerAndDB();
+                Deactivate();
+
+            }
+
+            ImGui::EndChild();
+
 
         }
 
         ImGui::End();
 
-}
+    }
+};
 
-void ImGuiWindow_MainWindow(GLFWInterface& GLFWIntrfc, SavedURLBookmarkContainer& ListContainer, ImVec2 dims) {
+struct ImGuiWindow_MainWindowInstance {
 
-    ImGui::SetNextWindowSize(ImVec2(dims.x,dims.y));
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    bool is_active = true;
+    char url_text_buffer[BUFFER_SIZE] = "";
+    
+    ImVec2 Dimensions = {568, 220};
+    ImVec2 Origin = {0, 0};
+    GLFWInterface& GLFWInterfaceReference;
+    SavedURLBookmarkContainer& ListContainerReference;
+    ImGuiWindow_EditWindowInstance EditWindow;
 
-    if (ImGui::Begin(
-        "window_name", 
-        &ImGuiWindow_MainWindow_Status,
-          ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
-        | ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoScrollbar
-        | ImGuiWindowFlags_NoBringToFrontOnFocus
-    )) {
-            ImGuiLayout_TextHeadersChild();
-            ImGuiLayout_URLListBoxChild(GLFWIntrfc.GetGLFWWindow(), ListContainer);
-            ImGuiLayout_URLButtonsAndInputChild(ListContainer);
-            ImGuiWindow_EditWindow();
+
+
+    ImGuiWindow_MainWindowInstance(
+
+        GLFWInterface& GLFWInterface, SavedURLBookmarkContainer& ListContainer
+    
+    ) : GLFWInterfaceReference(GLFWInterface), 
+        ListContainerReference(ListContainer),
+        EditWindow(ListContainerReference, Dimensions) 
+        
+        {
+
     }
 
-    ImGui::End();
+    void Display() {
 
-}
+        ImGui::SetNextWindowSize(Dimensions);
+        ImGui::SetNextWindowPos(Origin);
+
+        if (ImGui::Begin(
+            "window_name", 
+            &is_active,
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
+            | ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoScrollbar
+            | ImGuiWindowFlags_NoBringToFrontOnFocus
+        )) {
+
+                //@begin TextHeadersChild
+                ImGui::SetCursorPos(ImVec2(12,10));
+                ImGui::BeginChild(8, ImVec2(543,28), true);
+
+                ImGui::SetCursorPos(ImVec2(7.5,6));
+                ImGui::Text("Label:");
+
+                ImGui::SetCursorPos(ImVec2(116,6));
+                ImGui::Text("URL:");
+
+                ImGui::SetCursorPos(ImVec2(445,6));
+                ImGui::Text("Date Added:");
+
+                ImGui::EndChild();
+
+                //@begin URLListBoxChild
+                ImGui::SetCursorPos(ImVec2(12,45));
+                ImGui::BeginChild(13, ImVec2(550,-13), false);
+
+                ImGui::SetCursorPos(ImVec2(0,0));
+
+                if (ImGui::BeginListBox("##", ImVec2(542, 130))) {
+                    for (size_t i = 0; i < ListContainerReference.get_size(); ++i) {
+                        
+                        if (ImGui::Selectable(
+                            ListContainerReference.SavedURLBookmarks[i].formatted_display_string(), 
+                            (ListContainerReference.current_index == (int)i), 
+                            ImGuiSelectableFlags_AllowDoubleClick)) {
+
+                                ListContainerReference.current_index = i;
+                        
+                        }
+
+                        if (ImGui::IsItemHovered()) {
+
+                            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                                EditWindow.Activate();
+
+                            } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                                CopyStringToClipboard(GLFWInterfaceReference.GetGLFWWindow(), ListContainerReference.get_url_at_index(i));
+
+                            } else if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+                                DeleteAllInstancesOfCurrentRow(ListContainerReference);
+                                ListContainerReference.RefreshList();
+
+                            }
+                        }
+                    }
+                    ImGui::EndListBox();
+
+                }
+                ImGui::EndChild();
+
+
+                //@begin URLButtonsAndInputChild
+                ImVec2 origin(12, 180);
+                int child_width = 542;
+                int child_height = 34;
+
+                ImGui::SetCursorPos(ImVec2(origin.x,origin.y));
+                ImGui::BeginChild(14, ImVec2(child_width, child_height), true);
+
+                ImGui::SetCursorPos(ImVec2(6,8));
+                ImGui::Text("Add String:");
+
+                ImGui::SetCursorPos(ImVec2(85,6));
+                if (ImGui::InputText(
+                    "##url_input", 
+                    url_text_buffer, 
+                    IM_ARRAYSIZE(url_text_buffer), 
+                    ImGuiInputTextFlags_EnterReturnsTrue)) 
+                    {
+                        AddBufferContentsToList(ListContainerReference, url_text_buffer);
+                        ImGui::SetKeyboardFocusHere(-1);
+                }   
+
+                ImVec2 AddButtonOrigin(458 - origin.x, 187 - origin.y);
+                ImGui::SetCursorPos(ImVec2(458 - origin.x, 187 - origin.y));
+                if (ImGui::Button(
+                    "Add", 
+                    ImVec2(490 - AddButtonOrigin.x - origin.x, 205 - AddButtonOrigin.y - origin.y))) 
+                    {
+                        AddBufferContentsToList(ListContainerReference, url_text_buffer);
+                }
+
+                ImVec2 DeleteButtonOrigin(497 - origin.x, 187 - origin.y);
+                ImGui::SetCursorPos(ImVec2(497 - origin.x, 187 - origin.y));
+                if (ImGui::Button(
+                    "Delete", 
+                    ImVec2(547 - DeleteButtonOrigin.x - origin.x, 205 - DeleteButtonOrigin.y - origin.y))) 
+                    {
+                        DeleteAllInstancesOfCurrentRow(ListContainerReference);
+                        ListContainerReference.RefreshList();
+
+                }
+
+                ImGui::EndChild();
+
+
+                if (EditWindow.IsActive()) {
+                    EditWindow.Display();
+                }
+
+        }
+
+        ImGui::End();
+    }
+};
 
 int main(int argc, char** argv) {
 
@@ -1069,7 +1262,9 @@ int main(int argc, char** argv) {
         dims
     );
     ImGuiInterface ImGuiIntrfc(GLFWIntrfc);
-    SavedURLBookmarkContainer List(SQLiteIntrfc);
+    SavedURLBookmarkContainer ListContainer(SQLiteIntrfc);
+
+    ImGuiWindow_MainWindowInstance MainWindow(GLFWIntrfc, ListContainer);
 
     if (argc > 1) {
         if (strcmp(argv[1], "clear") == 0) {
@@ -1077,26 +1272,22 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[1], "url") == 0) {
 
             for (int i = 2; i < argc; ++i) {
-                std::cout << argv[i] << ":      " << GetHostNameFromURL(argv[i]) << std::endl;
+                std::cout << argv[i] << ":      " << GetHostNameFromURL(argv[i]) << '\n';
             }
         }
     }
 
-    List.RefreshList();
+    ListContainer.RefreshList();
     while (GLFWIntrfc.is_still_open()) {
         
         glfwPollEvents();
         ImGuiIntrfc.ImGuiNewFrameSetup();
         
-        ImGuiWindow_MainWindow(GLFWIntrfc, List, dims);
+        MainWindow.Display();
         
+
         ImGuiIntrfc.ImGuiRenderWithGLFWProcess();
         
-
-        if (ImGui::IsMouseClicked(0)) {
-            //PrintMousePos();
-        }
-
     }
 
     ImGuiIntrfc.ImGuiShutdownProcess();
