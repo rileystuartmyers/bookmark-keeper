@@ -1,5 +1,5 @@
 *** TODO ***
 
-- Add text label somewhere in the program that tells user how to edit and copy strings with left and right click
+    - user can add new entry to main window by simply pasting in existing clipboard url
 
-- Decorate with new colors and stylings in UI after functionality is further worked on
+    - Decorate with new colors and stylings in UI after functionality is further worked on

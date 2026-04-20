@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <fstream>
+#include <unordered_map>
 
 #include <assert.h>
 
@@ -777,6 +778,10 @@ class ImGuiInterface {
 
         }
 
+        ImGuiIO* GetIO() {
+            return io;
+        }
+
         void ImGuiShutdownProcess() {
 
             ImGui_ImplOpenGL3_Shutdown();
@@ -941,6 +946,11 @@ void DeleteAllInstancesOfRowWithIndex(SavedURLBookmarkContainer& ListContainer, 
 
 }
 
+std::string GetStringFromClipboard(GLFWwindow* Window) {
+    std::string StringFromClipboard = glfwGetClipboardString(Window);
+    return StringFromClipboard;
+}
+
 void CopyStringToClipboard(GLFWwindow* Window, const std::string& str) {
     glfwSetClipboardString(Window, str.c_str());
 }
@@ -963,13 +973,14 @@ struct ImGuiWindow_EditWindowInstance {
     ImVec2 Dimensions = {300, 140};
     ImVec2 Origin;
 
-    int TextChildBox_Width = 280;
+    int TextChildBox_Width = 299;
     int TextChildBox_Height = 34;
     int TextChildBox_LeftXValue = 0;
     
     int InputText_LeftChild_Padding = 100;
     int Inputtext_UpperChild_Padding = 7;
-    int InputText_Width_Value = 175;
+    int InputTextURL_Width_Value = 200;
+    int InputTextLabel_Width_Value = 175;
 
     int EnterBoxWidth = 46;
     int EnterBoxHeight = 20;
@@ -990,7 +1001,6 @@ struct ImGuiWindow_EditWindowInstance {
 
     void Activate() {
 
-        
         is_active = true;
         
         CurrentID = ListContainerReference.get_current_book_id();
@@ -1025,33 +1035,38 @@ struct ImGuiWindow_EditWindowInstance {
         
         ImGui::SetNextWindowPos(Origin);
         ImGui::SetNextWindowSize(Dimensions);
-
+        
         if (ImGui::Begin(
             "###EditWindow", 
             &is_active,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-            ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoScrollbar
+            ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoScrollWithMouse
         )) {    
+
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                Deactivate();
+            }
 
             int TitleWidth = ImGui::CalcTextSize("Edit an entry:").x;
             int Title_LeftXValue = (Dimensions.x - TitleWidth) / 2;
 
-            //@begin EditWindowTitleChildBox
+            //@begin EditWindowTitle
             ImGui::SetCursorPos(ImVec2(Title_LeftXValue, 10));
             ImGui::Text("Edit an entry:");
 
 
-            //@begin SavedURLChildBox
+            //@begin LabelChildBox
             ImGui::SetCursorPos(ImVec2(TextChildBox_LeftXValue, 30));
-            ImGui::BeginChild(4, ImVec2(TextChildBox_Width, TextChildBox_Height), false);
+            ImGui::BeginChild(8, ImVec2(TextChildBox_Width, TextChildBox_Height), false);
 
-            ImGui::SetCursorPos(ImVec2(18,11));
-            ImGui::Text("Saved URL:");
+            ImGui::SetCursorPos(ImVec2(47,10));
+            ImGui::Text("Label:");
 
             ImGui::SetCursorPos(ImVec2(InputText_LeftChild_Padding, Inputtext_UpperChild_Padding));
-            ImGui::PushItemWidth(InputText_Width_Value); //NOTE: (Push/Pop)ItemWidth is optional
-            if (ImGui::InputText("##SavedURL_Label", CurrentLabelArr, IM_ARRAYSIZE(CurrentLabelArr), ImGuiInputTextFlags_EnterReturnsTrue)) {
-
+            ImGui::PushItemWidth(InputTextLabel_Width_Value); //NOTE: (Push/Pop)ItemWidth is optional
+            if (ImGui::InputText("##URLLabel_Label", CurrentLabelArr, IM_ARRAYSIZE(CurrentURLArr), ImGuiInputTextFlags_EnterReturnsTrue)) {
+                
                 UpdateURLInContainerAndDB();
                 Deactivate();
 
@@ -1060,20 +1075,19 @@ struct ImGuiWindow_EditWindowInstance {
 
             ImGui::EndChild();
 
-            //@begin LabelChildBox
+
+            //@begin SavedURLChildBox
             ImGui::SetCursorPos(ImVec2(TextChildBox_LeftXValue, 70));
-            ImGui::BeginChild(8, ImVec2(TextChildBox_Width, TextChildBox_Height), false);
+            ImGui::BeginChild(4, ImVec2(TextChildBox_Width, TextChildBox_Height), false);
 
-            ImGui::SetCursorPos(ImVec2(47,10));
-            ImGui::Text("Label:");
+            ImGui::SetCursorPos(ImVec2(10,10));
+            ImGui::Text("Saved URL:");
 
-            ImGui::SetCursorPos(ImVec2(InputText_LeftChild_Padding, Inputtext_UpperChild_Padding));
-            ImGui::PushItemWidth(InputText_Width_Value); //NOTE: (Push/Pop)ItemWidth is optional
-            if (ImGui::InputText("##URLLabel_Label", CurrentURLArr, IM_ARRAYSIZE(CurrentURLArr), ImGuiInputTextFlags_EnterReturnsTrue)) {
-                
+            ImGui::SetCursorPos(ImVec2(InputText_LeftChild_Padding - 10, Inputtext_UpperChild_Padding));
+            ImGui::PushItemWidth(InputTextURL_Width_Value); //NOTE: (Push/Pop)ItemWidth is optional
+            if (ImGui::InputText("##SavedURL_Label", CurrentURLArr, IM_ARRAYSIZE(CurrentLabelArr), ImGuiInputTextFlags_EnterReturnsTrue)) {
                 UpdateURLInContainerAndDB();
                 Deactivate();
-
             }
             ImGui::PopItemWidth();
 
@@ -1090,11 +1104,10 @@ struct ImGuiWindow_EditWindowInstance {
             ImGui::BeginChild(2, ImVec2(EnterBoxWidth, EnterBoxHeight), false, ImGuiWindowFlags_NoScrollbar);
             ImGui::SetCursorPos(ImVec2(0, 0));
             if (ImGui::Button("Enter", ImVec2(EnterBoxWidth, EnterBoxHeight))) {
-
                 UpdateURLInContainerAndDB();
                 Deactivate();
-
             }
+
 
             ImGui::EndChild();
 
@@ -1104,21 +1117,91 @@ struct ImGuiWindow_EditWindowInstance {
         ImGui::End();
 
     }
+
+    void DisplayIfCurrentlyActive() {
+        if (is_active) {
+            Display();
+        }
+    }
+
+};
+
+std::unordered_map<std::string, ImVec4> COLORS = {
+    {"Pale Green", ImVec4(0.796, 0.969, 0.796, 1.0f)},
+    {"Pale Pink", ImVec4(0.867f, 0.741f, 0.89f, 1.0f)},
+    {"Beige", ImVec4(0.749f, 0.698f, 0.486f, 1.0f)},
+    {"Deep Gray", ImVec4(0.11, 0.129, 0.129, 1.0f)},
+    {"Pale Gray", ImVec4(0.859f, 0.859f, 0.859f, 1.0f)}
 };
 
 struct ImGuiWindow_MainWindowInstance {
 
+    std::string FontFilePath = "../include/font/Noto_Sans/NotoSans-VariableFont_wdth,wght.ttf";
+
     bool is_active = true;
     char url_text_buffer[BUFFER_SIZE] = "";
-    
+    char url_shortcut_text_buffer[BUFFER_SIZE] = "";
+
     ImVec2 Dimensions = {568, 220};
     ImVec2 Origin = {0, 0};
     GLFWInterface& GLFWInterfaceReference;
     SavedURLBookmarkContainer& ListContainerReference;
     ImGuiWindow_EditWindowInstance EditWindow;
 
+    void ColorInit() {
 
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, COLORS["Pale Pink"]);
+        ImGui::PushStyleColor(ImGuiCol_Text, COLORS["Deep Gray"]);
+        ImGui::PushStyleColor(ImGuiCol_Text, COLORS["Deep Gray"]);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, COLORS["Pale Gray"]);
+        ImGui::PushStyleColor(ImGuiCol_TitleBg, COLORS["Pale Gray"]);
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, COLORS["Pale Gray"]);
 
+    }
+
+    void StyleInit() {
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+
+    }
+
+    void FontInit() {
+        
+        ImGuiIO& tempIO = ImGui::GetIO();
+        ImFont* RobotoFont = tempIO.Fonts -> AddFontFromFileTTF(FontFilePath.c_str());
+        
+        ImGui::PushFont(RobotoFont);
+        tempIO.FontGlobalScale = 0.8f;
+    }
+    
+    bool CopyPasteShortcutHasBeenPressed() {
+
+        ImGuiIO& io = ImGui::GetIO();
+
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V)) {
+            return true;
+        } else {
+            return false;
+        }
+
+    }
+
+    bool PreviousItemIsNotFocused() {
+        return !(ImGui::IsItemFocused());
+    }
+
+    void AddClipboardStringToListIfInputTextFieldIsNotActive() {
+
+        if (PreviousItemIsNotFocused() && CopyPasteShortcutHasBeenPressed()) {
+            
+            std::string ClipboardString = GetStringFromClipboard(GLFWInterfaceReference.GetGLFWWindow());
+            strncpy(url_shortcut_text_buffer, ClipboardString.c_str(), BUFFER_SIZE - 1);
+            AddBufferContentsToList(ListContainerReference, url_shortcut_text_buffer);
+            
+        }
+
+    }
+        
     ImGuiWindow_MainWindowInstance(
 
         GLFWInterface& GLFWInterface, SavedURLBookmarkContainer& ListContainer
@@ -1128,7 +1211,9 @@ struct ImGuiWindow_MainWindowInstance {
         EditWindow(ListContainerReference, Dimensions) 
         
         {
-
+            ColorInit();
+            StyleInit();
+            //FontInit();
     }
 
     void Display() {
@@ -1164,7 +1249,6 @@ struct ImGuiWindow_MainWindowInstance {
                 ImGui::BeginChild(13, ImVec2(550,-13), false);
 
                 ImGui::SetCursorPos(ImVec2(0,0));
-
                 if (ImGui::BeginListBox("##", ImVec2(542, 130))) {
                     for (size_t i = 0; i < ListContainerReference.get_size(); ++i) {
                         
@@ -1218,7 +1302,8 @@ struct ImGuiWindow_MainWindowInstance {
                     {
                         AddBufferContentsToList(ListContainerReference, url_text_buffer);
                         ImGui::SetKeyboardFocusHere(-1);
-                }   
+                } 
+                AddClipboardStringToListIfInputTextFieldIsNotActive();
 
                 ImVec2 AddButtonOrigin(458 - origin.x, 187 - origin.y);
                 ImGui::SetCursorPos(ImVec2(458 - origin.x, 187 - origin.y));
@@ -1242,14 +1327,12 @@ struct ImGuiWindow_MainWindowInstance {
 
                 ImGui::EndChild();
 
-
-                if (EditWindow.IsActive()) {
-                    EditWindow.Display();
-                }
+                EditWindow.DisplayIfCurrentlyActive();
 
         }
 
         ImGui::End();
+
     }
 };
 
